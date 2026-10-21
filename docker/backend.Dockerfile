@@ -1,13 +1,10 @@
-services:
-  postgres:
-    image: postgres:16
-    environment: { POSTGRES_USER: kendy, POSTGRES_PASSWORD: kendy, POSTGRES_DB: kendy }
-    volumes: [pgdata:/var/lib/postgresql/data]
-    ports: ["5432:5432"]
-  backend:
-    build: { context: ., dockerfile: docker/backend.Dockerfile }
-    env_file: .env
-    depends_on: [postgres]
-    ports: ["3000:3000"]
-    volumes: [apkdata:/data]
-volumes: { pgdata: {}, apkdata: {} }
+FROM node:20-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends aapt && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY backend/package.json ./
+RUN npm install
+COPY backend/ ./
+RUN npm run build && cp src/db/001_init.sql dist/db/
+RUN mkdir -p /data && chown node:node /data
+USER node
+CMD ["node", "dist/server.js"]
