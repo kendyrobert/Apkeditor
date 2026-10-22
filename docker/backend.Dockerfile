@@ -4,7 +4,7 @@ WORKDIR /app
 COPY backend/package.json ./
 RUN npm install
 COPY backend/ ./
-RUN npm run build && cp src/db/001_init.sql dist/db/
+RUN npm run build && cp src/db/*.sql dist/db/
 RUN mkdir -p /data && chown node:node /data
 USER node
 CMD ["node", "dist/server.js"]
