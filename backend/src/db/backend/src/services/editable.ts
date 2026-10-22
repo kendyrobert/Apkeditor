@@ -20,15 +20,15 @@ const bin = (reason: string): FileClass => ({ kind: "binary", editable: false, r
 
 export function classify(path: string): FileClass {
   const e = ext(path);
-  if (path === "AndroidManifest.xml") return bin("Manifiesto compilado (binario). Se podrá editar con Apktool en el módulo 4.");
-  if (/^classes\d*\.dex$/.test(path)) return bin("Código DEX compilado: no es texto. Requiere JADX/Apktool (módulo 4).");
-  if (path === "resources.arsc") return bin("Tabla de recursos compilada (binario). Requiere Apktool (módulo 4).");
+  if (path === "AndroidManifest.xml") return bin("Manifiesto compilado (binario). Se podrá editar con Apktool en el módulo 5.");
+  if (/^classes\d*\.dex$/.test(path)) return bin("Código DEX compilado: no es texto. Requiere JADX/Apktool (módulo 5).");
+  if (path === "resources.arsc") return bin("Tabla de recursos compilada (binario). Requiere Apktool (módulo 5).");
   if (path.startsWith("META-INF/")) return bin("Archivo de firma. Se regenera al firmar el APK; no se edita.");
   if (path.startsWith("lib/")) return bin("Biblioteca nativa (.so). No se puede editar de forma segura.");
-  if (/\.9\.png$/i.test(path)) return bin("Imagen 9-patch compilada: reemplazarla puede romper la interfaz. Requiere Apktool (módulo 4).");
+  if (/\.9\.png$/i.test(path)) return bin("Imagen 9-patch compilada: reemplazarla puede romper la interfaz. Requiere Apktool (módulo 5).");
   const rawArea = path.startsWith("assets/") || path.startsWith("res/raw/");
   if (rawArea && TEXT_EXT.has(e)) return { kind: "text", editable: true };
-  if (path.startsWith("res/") && e === "xml") return bin("XML compilado de Android (binario). Se podrá editar con Apktool en el módulo 4.");
+  if (path.startsWith("res/") && e === "xml") return bin("XML compilado de Android (binario). Se podrá editar con Apktool en el módulo 5.");
   if (IMG_EXT.has(e) && (path.startsWith("res/") || path.startsWith("assets/"))) return { kind: "image", editable: true };
   return bin("Archivo binario o de un tipo que no se puede editar de forma segura.");
 }
@@ -39,4 +39,4 @@ export function sniffImage(b: Buffer): "png" | "jpg" | "webp" | "gif" | null {
   if (b.length >= 12 && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP") return "webp";
   if (b.length >= 6 && ["GIF87a", "GIF89a"].includes(b.toString("ascii", 0, 6))) return "gif";
   return null;
-                           }
+}
