@@ -49,10 +49,24 @@ input:focus{border-color:var(--accent)}
 .file span:first-child{word-break:break-all}.file span:last-child{color:var(--muted);white-space:nowrap}
 .note{padding:12px 14px;border-radius:12px;background:rgba(255,184,77,.1);border:1px solid rgba(255,184,77,.35);color:var(--warn);font-size:14px}
 .perm{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)}
-#toasts{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:50;max-width:calc(100% - 28px)}
+#toasts{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:90;max-width:calc(100% - 28px)}
 .toast{padding:12px 16px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);animation:in .2s}
 .toast.ok{border-color:var(--ok)}.toast.err{border-color:var(--err)}
 @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.toast.warn{border-color:var(--warn)}
+.btn.sm{min-height:40px;padding:6px 12px;border-radius:10px}
+.tag{font-style:normal}
+em.tag{margin-left:6px;color:var(--accent)}
+select{width:100%;min-height:46px;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text)}
+.ov{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column}
+.ovbar{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+.ovbar .ttl{flex:1;min-width:130px;word-break:break-all;font-size:13px}
+.ovbody{flex:1;min-height:0;position:relative}
+.ovbody.scroll{overflow-y:auto;padding:16px}
+.ovbody .CodeMirror{position:absolute;inset:0;height:auto;font-size:14px}
+.diff{position:absolute;inset:0;overflow:auto;margin:0;padding:10px;font:13px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all}
+.diff span{display:block}.diff .da{background:rgba(47,211,138,.15)}.diff .dr{background:rgba(255,92,112,.18)}.diff .dg{color:var(--muted)}
+.pv{max-width:140px;max-height:140px;border:1px solid var(--line);border-radius:8px;display:block;background:repeating-conic-gradient(#2a3347 0 25%,#1c2333 0 50%) 0 0/14px 14px}
 .chk{padding:12px 14px;border-radius:12px;border:1px solid var(--line);margin-bottom:8px;background:var(--panel2)}
 .chk.ok{border-color:rgba(47,211,138,.5)}.chk.bad{border-color:rgba(255,92,112,.6)}.chk.warn{border-color:rgba(255,184,77,.6)}
 .chk small{display:block;color:var(--muted)}.chk .fix{color:var(--warn);margin-top:4px}
@@ -72,9 +86,9 @@ input:focus{border-color:var(--accent)}
     <a class="nav" href="#/home" data-r="home">Inicio</a>
     <a class="nav" href="#/projects" data-r="projects">Mis proyectos</a>
     <a class="nav" href="#/import" data-r="import">Importar APK</a>
-    <span class="nav off">Editor de código <span class="tag">módulo 3</span></span>
-    <span class="nav off">Imágenes e iconos <span class="tag">módulo 3</span></span>
-    <span class="nav off">Propiedades <span class="tag">módulo 3</span></span>
+    <a class="nav" href="#/projects">Editor de código <span class="tag">en proyecto</span></a>
+    <a class="nav" href="#/projects">Imágenes e iconos <span class="tag">en proyecto</span></a>
+    <span class="nav off">Propiedades <span class="tag">módulo 4</span></span>
     <span class="nav off">Compilación <span class="tag">módulo 4</span></span>
     <span class="nav off">Firma digital <span class="tag">módulo 4</span></span>
     <span class="nav off">Versiones y enlaces <span class="tag">módulo 5</span></span>
@@ -142,7 +156,7 @@ function viewHome() {
   view.innerHTML = `<h1>KENDY APK STUDIO</h1>
   <p class="sub">Importa un APK que tengas derecho a modificar, explora su contenido y edita sus recursos.</p>
   <div class="card"><a class="btn primary big" href="#/import">⬆ Importar APK</a>
-  <p class="sub" style="margin:14px 0 0">Ahora disponible: carga, análisis y explorador de archivos. Editor, reconstrucción, firma y enlaces de descarga se activarán en los siguientes módulos del backend.</p></div>
+  <p class="sub" style="margin:14px 0 0">Ahora disponible: carga, análisis, explorador, editor de texto, reemplazo de imágenes e iconos y registro de cambios. Reconstrucción, firma y enlaces de descarga llegan en los siguientes módulos.</p></div>
   <div class="card"><h2>Estado del servidor</h2><div id="health">Comprobando…</div></div>`;
   api("/health").then(h => {
     const bad = h.ok === false;
@@ -210,16 +224,42 @@ async function viewProjects() {
 
 const CAT = { manifest: "Manifiesto", dex: "Código DEX", image: "Imágenes", "resource-xml": "XML de recursos", resource: "Otros recursos",
   "compiled-resources": "Recursos compilados", assets: "Assets", native: "Bibliotecas nativas", signature: "Firma (META-INF)", other: "Otros" };
-const BINARY = new Set(["manifest", "dex", "compiled-resources", "native", "signature", "resource-xml"]);
+
+/* ---------- Proyecto abierto ---------- */
+let CUR = null;
+const enc = encodeURIComponent;
+const pbase = id => apiBase() + "/api/projects/" + enc(id);
+const extOf = p => (/\.([a-z0-9]+)$/i.exec(p) || [, ""])[1].toLowerCase();
+const baseName = p => (p.split("/").pop() || "").replace(/\.[^.]+$/, "");
+const fmtDate = s => new Date(s).toLocaleString();
+const jsonHdr = { "Content-Type": "application/json" };
 
 async function viewProject(id) {
   view.innerHTML = "Cargando…";
-  let p, files;
-  try { [p, files] = await Promise.all([api("/api/projects/" + id), api("/api/projects/" + id + "/files")]); }
-  catch (e) { view.innerHTML = `<div class="card" style="color:var(--err)">${esc(e.message)}</div>`; return; }
-  const i = p.info, base = apiBase() + "/api/projects/" + encodeURIComponent(id);
-  view.innerHTML = `<h1>${esc(p.name)}</h1><p class="sub">${esc(i.packageName)}</p>
-  <div class="card"><div class="row"><img class="icon" src="${base}/icon" alt="" onerror="this.style.visibility='hidden'">
+  try {
+    const [p, files] = await Promise.all([api("/api/projects/" + id), api("/api/projects/" + id + "/files")]);
+    CUR = { id, p, files, tab: "info", cat: "all", q: "", iconV: Date.now() };
+  } catch (e) { view.innerHTML = `<div class="card" style="color:var(--err)">${esc(e.message)}</div>`; return; }
+  drawProject();
+}
+async function reloadFiles() { CUR.files = await api("/api/projects/" + CUR.id + "/files"); CUR.iconV = Date.now(); }
+
+function drawProject() {
+  const { p, files } = CUR, n = files.filter(f => f.modified).length;
+  view.innerHTML = `<h1>${esc(p.name)}</h1><p class="sub">${esc(p.info.packageName)}${n ? ` · <span style="color:var(--warn)">${n} archivo(s) modificado(s)</span>` : ""}</p>
+  <div class="chips" id="tabs"><button class="chip" data-t="info">Información</button><button class="chip" data-t="files">Archivos</button><button class="chip" data-t="changes">Cambios (${n})</button></div><div id="tab"></div>`;
+  $("#tabs").onclick = e => { const t = e.target.dataset.t; if (t) { CUR.tab = t; drawTab(); } };
+  drawTab();
+}
+function drawTab() {
+  document.querySelectorAll("#tabs .chip").forEach(c => c.classList.toggle("on", c.dataset.t === CUR.tab));
+  const el = $("#tab");
+  ({ info: renderInfo, files: renderFiles, changes: renderChanges }[CUR.tab])(el);
+}
+
+function renderInfo(el) {
+  const { p } = CUR, i = p.info, base = pbase(CUR.id);
+  el.innerHTML = `<div class="card"><div class="row"><img class="icon" src="${base}/icon?v=${CUR.iconV}" alt="" onerror="this.style.visibility='hidden'">
   <div class="kv" style="flex:1;min-width:240px">
    <div>Paquete</div><div>${esc(i.packageName)}</div>
    <div>Versión</div><div>${esc(i.versionName)} (código ${esc(i.versionCode)})</div>
@@ -227,41 +267,334 @@ async function viewProject(id) {
    <div>Android objetivo (SDK)</div><div>${esc(i.targetSdk)}</div>
    <div>Actividad principal</div><div>${esc(i.launchActivity)}</div>
    <div>Tamaño</div><div>${fmt(Number(p.size_bytes))} · ${esc(i.totalFiles)} archivos</div>
+   <div>Estado</div><div>${esc(p.status === "modified" ? "con cambios sin reconstruir" : "sin cambios")}</div>
    <div>Arquitecturas</div><div>${i.nativeAbis.length ? esc(i.nativeAbis.join(", ")) : "ninguna (sin bibliotecas nativas)"}</div>
    <div>SHA-256 original</div><div class="perm">${esc(p.original_sha256)}</div></div></div>
    <div class="note" style="margin-top:14px" id="iconNote" hidden>El icono no se puede mostrar como imagen (probablemente es un icono adaptativo XML). Se resolverá con Apktool en el módulo 4.</div></div>
   <div class="card"><h2>Permisos declarados (${i.permissions.length})</h2>
-   ${i.permissions.length ? i.permissions.map(x => `<div class="perm">${esc(x)}</div>`).join("") : "Ninguno"}</div>
-  <div class="card"><h2>Explorador de archivos</h2>
-   <input type="search" id="q" placeholder="Buscar por nombre…">
+   ${i.permissions.length ? i.permissions.map(x => `<div class="perm">${esc(x)}</div>`).join("") : "Ninguno"}</div>`;
+  const probe = new Image(); probe.onerror = () => { const n = $("#iconNote"); if (n) n.hidden = false; }; probe.src = base + "/icon?v=" + CUR.iconV;
+}
+
+function renderFiles(el) {
+  const files = CUR.files;
+  el.innerHTML = `<div class="card"><h2>Explorador de archivos</h2>
+   <input type="search" id="q" placeholder="Buscar por nombre…" value="${esc(CUR.q)}">
    <div class="chips" id="chips"></div><div class="files" id="files"></div>
    <div id="detail" class="card" style="margin:14px 0 0" hidden></div></div>`;
-  const probe = new Image(); probe.onerror = () => { $("#iconNote").hidden = false; }; probe.src = base + "/icon";
-
-  let cat = "all", q = "";
+  const counts = {}; files.forEach(f => counts[f.category] = (counts[f.category] || 0) + 1);
+  const drawChips = () => { $("#chips").innerHTML = `<button class="chip ${CUR.cat === "all" ? "on" : ""}" data-c="all">Todos (${files.length})</button>` +
+    Object.keys(counts).map(c => `<button class="chip ${CUR.cat === c ? "on" : ""}" data-c="${esc(c)}">${esc(CAT[c] || c)} (${counts[c]})</button>`).join(""); };
   const render = () => {
-    const shown = files.filter(f => (cat === "all" || f.category === cat) && (!q || f.path.toLowerCase().includes(q)));
-    $("#files").innerHTML = shown.slice(0, 500).map((f, n) => `<div class="file" data-i="${files.indexOf(f)}"><span>${esc(f.path)}</span><span>${fmt(f.size)}</span></div>`).join("") || `<div class="file">Sin resultados</div>`;
+    const q = CUR.q.toLowerCase();
+    const shown = files.filter(f => (CUR.cat === "all" || f.category === CUR.cat) && (!q || f.path.toLowerCase().includes(q)));
+    $("#files").innerHTML = shown.slice(0, 500).map(f => `<div class="file" data-i="${files.indexOf(f)}"><span>${f.modified ? "● " : ""}${esc(f.path)}${f.editable ? ` <em class="tag">${f.kind === "text" ? "texto" : "imagen"}</em>` : ""}</span><span>${fmt(f.size)}</span></div>`).join("") || `<div class="file">Sin resultados</div>`;
     if (shown.length > 500) $("#files").insertAdjacentHTML("beforeend", `<div class="file"><span>…y ${shown.length - 500} más. Afina la búsqueda.</span></div>`);
   };
-  const counts = {}; files.forEach(f => counts[f.category] = (counts[f.category] || 0) + 1);
-  $("#chips").innerHTML = `<button class="chip on" data-c="all">Todos (${files.length})</button>` +
-    Object.keys(counts).map(c => `<button class="chip" data-c="${esc(c)}">${esc(CAT[c] || c)} (${counts[c]})</button>`).join("");
-  $("#chips").onclick = e => { const c = e.target.dataset.c; if (!c) return; cat = c;
-    document.querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x.dataset.c === c)); render(); };
-  $("#q").oninput = e => { q = e.target.value.toLowerCase(); render(); };
+  drawChips(); render();
+  $("#chips").onclick = e => { const c = e.target.dataset.c; if (!c) return; CUR.cat = c; drawChips(); render(); };
+  $("#q").oninput = e => { CUR.q = e.target.value; render(); };
   $("#files").onclick = e => {
     const row = e.target.closest(".file[data-i]"); if (!row) return;
     document.querySelectorAll(".file.sel").forEach(x => x.classList.remove("sel")); row.classList.add("sel");
-    const f = files[row.dataset.i], d = $("#detail"); d.hidden = false;
-    d.innerHTML = `<div class="kv"><div>Ruta</div><div class="perm">${esc(f.path)}</div><div>Tamaño</div><div>${fmt(f.size)}</div><div>Categoría</div><div>${esc(CAT[f.category] || f.category)}</div></div>
-    <p class="note" style="margin-bottom:0">${BINARY.has(f.category)
-      ? "Archivo compilado o binario: no es código fuente legible. Para verlo o editarlo se necesita una herramienta de análisis (Apktool/JADX), que llegará con el módulo 4."
-      : "La vista previa y la edición de este archivo estarán disponibles en el módulo 3."}</p>`;
+    showDetail(files[row.dataset.i]);
   };
-  render();
 }
 
+async function showDetail(f) {
+  const d = $("#detail"); d.hidden = false;
+  const act = f.editable ? `<button class="btn primary" id="act">${f.kind === "text" ? "✎ Abrir en el editor" : "🖼 Editar imagen"}</button>` : "";
+  d.innerHTML = `<div class="kv"><div>Ruta</div><div class="perm">${esc(f.path)}</div><div>Tamaño</div><div>${fmt(f.size)}</div><div>Categoría</div><div>${esc(CAT[f.category] || f.category)}</div><div>Estado</div><div>${f.modified ? "modificado" : "original"}</div></div>
+  <div id="why"></div><div class="row" style="margin-top:12px">${act}</div>`;
+  if (act) $("#act").onclick = () => f.kind === "text" ? openTextEditor(f.path) : openImageEditor(f.path);
+  else {
+    try { const r = await api(`/api/projects/${CUR.id}/file?path=${enc(f.path)}`); const w = $("#why"); if (w) w.innerHTML = `<p class="note" style="margin-bottom:0">${esc(r.reason || "Este archivo no se puede editar.")}</p>`; }
+    catch (e) { const w = $("#why"); if (w) w.innerHTML = `<p class="note" style="margin-bottom:0">${esc(e.message)}</p>`; }
+  }
+}
+
+async function renderChanges(el) {
+  el.innerHTML = '<div class="card">Cargando…</div>';
+  let r; try { r = await api(`/api/projects/${CUR.id}/changes`); }
+  catch (e) { el.innerHTML = `<div class="card" style="color:var(--err)">${esc(e.message)}</div>`; return; }
+  el.innerHTML = `<div class="card"><h2>Archivos modificados (${r.changes.length})</h2>
+   ${r.changes.length ? r.changes.map(c => `<div class="chk"><b>${esc(c.path)}</b><small>${c.kind === "text" ? "texto" : "imagen"} · ${fmt(Number(c.size_bytes))} · ${esc(fmtDate(c.updated_at))}</small>
+     <div class="row" style="margin-top:8px"><button class="btn sm" data-open="${esc(c.path)}" data-k="${esc(c.kind)}">Abrir</button><button class="btn sm danger" data-rs="${esc(c.path)}">Restaurar</button></div></div>`).join("") : "Todavía no hay cambios."}
+   ${r.changes.length ? '<button class="btn danger" id="discard" style="margin-top:8px">Descartar todos los cambios</button>' : ""}</div>
+  <div class="card"><h2>Historial</h2>${r.log.length ? r.log.map(l => `<div class="perm">${esc(fmtDate(l.at))} · ${esc(l.action)} · ${esc(l.path)}</div>`).join("") : "Sin historial."}</div>
+  <div class="note">Los cambios quedan guardados en el proyecto, pero el APK todavía no se reconstruye ni se firma: eso llega en el módulo 4. En el plan gratuito de Render, los archivos pueden perderse si el servidor se reinicia.</div>`;
+  el.querySelectorAll("[data-open]").forEach(b => b.onclick = () => b.dataset.k === "text" ? openTextEditor(b.dataset.open) : openImageEditor(b.dataset.open));
+  el.querySelectorAll("[data-rs]").forEach(b => b.onclick = async () => {
+    if (!confirm("¿Restaurar el archivo original? Se perderán sus cambios.")) return;
+    try { await api(`/api/projects/${CUR.id}/changes?path=${enc(b.dataset.rs)}`, { method: "DELETE" }); toast("Archivo restaurado"); await reloadFiles(); drawProject(); }
+    catch (e) { toast(e.message, "err"); }
+  });
+  const dis = $("#discard");
+  if (dis) dis.onclick = async () => {
+    if (!confirm("¿Descartar TODOS los cambios y volver al APK original?")) return;
+    try { await api(`/api/projects/${CUR.id}/changes`, { method: "DELETE" }); toast("Cambios descartados"); await reloadFiles(); drawProject(); }
+    catch (e) { toast(e.message, "err"); }
+  };
+}
+
+/* ---------- Pantalla completa (editores) ---------- */
+function overlay(html) {
+  const o = document.createElement("div"); o.className = "ov"; o.innerHTML = html;
+  document.body.appendChild(o); document.body.style.overflow = "hidden";
+  o.close = () => { o.remove(); document.body.style.overflow = ""; };
+  return o;
+}
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("No se pudo cargar el editor (" + src.split("/").slice(-1)[0] + "). Revisa tu conexión.")); document.head.appendChild(s); });
+}
+let cmPromise = null;
+function loadCM() {
+  if (cmPromise) return cmPromise;
+  const B = "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/";
+  [["codemirror.min.css"], ["theme/material-darker.min.css"]].forEach(([f]) => { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = B + f; document.head.appendChild(l); });
+  cmPromise = loadScript(B + "codemirror.min.js")
+    .then(() => Promise.all(["mode/javascript/javascript.min.js", "mode/xml/xml.min.js", "mode/css/css.min.js", "addon/search/searchcursor.min.js"].map(x => loadScript(B + x))))
+    .then(() => loadScript(B + "mode/htmlmixed/htmlmixed.min.js"))
+    .catch(e => { cmPromise = null; throw e; });
+  return cmPromise;
+}
+
+/* Comparación línea por línea */
+function lineDiff(a, b) {
+  const x = a.split("\n"), y = b.split("\n"), n = x.length, m = y.length;
+  if (n * m > 4e6) return null;
+  const w = m + 1, dp = new Uint32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    dp[i * w + j] = x[i] === y[j] ? dp[(i + 1) * w + j + 1] + 1 : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (x[i] === y[j]) { out.push([" ", x[i]]); i++; j++; }
+    else if (dp[(i + 1) * w + j] >= dp[i * w + j + 1]) out.push(["-", x[i++]]);
+    else out.push(["+", y[j++]]);
+  }
+  while (i < n) out.push(["-", x[i++]]);
+  while (j < m) out.push(["+", y[j++]]);
+  return out;
+}
+function renderDiff(a, b) {
+  const d = lineDiff(a, b);
+  if (!d) return esc("El archivo es demasiado grande para compararlo línea por línea.");
+  if (!d.some(l => l[0] !== " ")) return esc("Sin diferencias con el original.");
+  let html = "", gap = false;
+  d.forEach((l, k) => {
+    const near = d.slice(Math.max(0, k - 2), k + 3).some(z => z[0] !== " ");
+    if (!near) { gap = true; return; }
+    if (gap) { html += '<span class="dg">…</span>'; gap = false; }
+    html += `<span class="d${l[0] === "+" ? "a" : l[0] === "-" ? "r" : "c"}">${esc(l[0] + " " + l[1])}</span>`;
+  });
+  return html;
+}
+
+/* ---------- Editor de código ---------- */
+async function openTextEditor(path) {
+  let info;
+  try { [info] = await Promise.all([api(`/api/projects/${CUR.id}/file?path=${enc(path)}`), loadCM()]); }
+  catch (e) { return toast(e.message, "err"); }
+  if (!info.editable) return toast(info.reason || "Este archivo no se puede editar.", "err");
+
+  const ov = overlay(`<div class="ovbar"><b class="ttl" id="ttl"></b><span class="tag" id="st"></span>
+    <button class="btn sm primary" id="bSave">💾 Guardar</button><button class="btn sm" id="bUndo" title="Deshacer">↶</button><button class="btn sm" id="bRedo" title="Rehacer">↷</button>
+    <button class="btn sm" id="bFind">🔍</button><button class="btn sm" id="bDiff">Comparar</button><button class="btn sm danger" id="bRestore">Restaurar</button><button class="btn sm" id="bClose">✕</button></div>
+    <div class="ovbar" id="findbar" hidden><input type="search" id="fq" placeholder="Buscar" style="flex:1;min-width:110px"><input type="text" id="fr" placeholder="Reemplazar por" style="flex:1;min-width:110px">
+    <button class="btn sm" id="fPrev">↑</button><button class="btn sm" id="fNext">↓</button><button class="btn sm" id="fRep">Reemplazar</button><button class="btn sm" id="fAll">Todo</button></div>
+    <div class="ovbody"><textarea id="ta"></textarea><pre class="diff" id="diff" hidden></pre></div>
+    <div class="ovbar" style="border-top:1px solid var(--line);border-bottom:0"><span class="perm" id="msg"></span></div>`);
+  const q = s => ov.querySelector(s);
+  q("#ttl").textContent = path;
+  q("#ta").value = info.content;
+  const e = extOf(path);
+  const mode = e === "json" ? { name: "javascript", json: true } : e === "js" ? "javascript" : e === "css" ? "css"
+    : (e === "html" || e === "htm") ? "htmlmixed" : (e === "xml" || e === "svg") ? "xml" : null;
+  const cm = CodeMirror.fromTextArea(q("#ta"), { mode, theme: "material-darker", lineNumbers: true, lineWrapping: true, indentUnit: 2, tabSize: 2 });
+  let gen = cm.changeGeneration(), isMod = info.modified, origText = info.modified ? null : info.content, showDiff = false;
+  const dirty = () => !cm.isClean(gen);
+  const state = () => { q("#st").textContent = dirty() ? "sin guardar" : isMod ? "modificado" : "original"; };
+  let vt = 0;
+  const validate = () => {
+    const t = cm.getValue(); let m = "";
+    if (e === "json") { try { JSON.parse(t); m = "✔ JSON válido"; } catch (x) { m = "⚠ JSON inválido: " + x.message; } }
+    else if (e === "xml" || e === "svg") { const er = new DOMParser().parseFromString(t, "application/xml").querySelector("parsererror"); m = er ? "⚠ XML mal formado" : "✔ XML bien formado"; }
+    const c = cm.getCursor(); q("#msg").textContent = (m ? m + " · " : "") + "Línea " + (c.line + 1) + ", col " + (c.ch + 1);
+  };
+  cm.on("change", () => { state(); clearTimeout(vt); vt = setTimeout(validate, 350); });
+  cm.on("cursorActivity", () => { clearTimeout(vt); vt = setTimeout(validate, 150); });
+  state(); validate(); setTimeout(() => cm.refresh(), 50);
+
+  q("#bSave").onclick = async () => {
+    try {
+      const r = await api(`/api/projects/${CUR.id}/file`, { method: "PUT", headers: jsonHdr, body: JSON.stringify({ path, content: cm.getValue() }) });
+      gen = cm.changeGeneration(); isMod = r.modified; state();
+      (r.warnings || []).forEach(w => toast("⚠ " + w, "warn"));
+      toast(r.modified ? "Guardado" : "Igual al original: sin cambios");
+      await reloadFiles(); drawProject();
+    } catch (x) { toast(x.message, "err"); }
+  };
+  q("#bUndo").onclick = () => { cm.undo(); cm.focus(); };
+  q("#bRedo").onclick = () => { cm.redo(); cm.focus(); };
+
+  const fb = q("#findbar"), fq = q("#fq"), fr = q("#fr"), Pos = CodeMirror.Pos;
+  q("#bFind").onclick = () => { fb.hidden = !fb.hidden; if (!fb.hidden) { const s = cm.getSelection(); if (s && !s.includes("\n")) fq.value = s; fq.focus(); } cm.refresh(); };
+  const findNext = rev => {
+    const t = fq.value; if (!t) return;
+    let sc = cm.getSearchCursor(t, cm.getCursor(rev ? "from" : "to"), { caseFold: true });
+    if (!(rev ? sc.findPrevious() : sc.findNext())) {
+      sc = cm.getSearchCursor(t, rev ? Pos(cm.lastLine()) : Pos(0, 0), { caseFold: true });
+      if (!(rev ? sc.findPrevious() : sc.findNext())) return toast("Sin coincidencias", "warn");
+    }
+    cm.setSelection(sc.from(), sc.to()); cm.scrollIntoView({ from: sc.from(), to: sc.to() }, 60);
+  };
+  q("#fNext").onclick = () => findNext(false); q("#fPrev").onclick = () => findNext(true);
+  fq.onkeydown = ev => { if (ev.key === "Enter") findNext(ev.shiftKey); };
+  q("#fRep").onclick = () => {
+    const t = fq.value; if (!t) return;
+    if (cm.getSelection().toLowerCase() === t.toLowerCase()) cm.replaceSelection(fr.value);
+    findNext(false);
+  };
+  q("#fAll").onclick = () => {
+    const t = fq.value; if (!t) return;
+    const sc = cm.getSearchCursor(t, Pos(0, 0), { caseFold: true }); let n = 0;
+    cm.operation(() => { while (sc.findNext()) { sc.replace(fr.value); n++; } });
+    toast(n + " reemplazo(s)", n ? "ok" : "warn");
+  };
+
+  q("#bDiff").onclick = async () => {
+    showDiff = !showDiff; const dv = q("#diff"), w = q(".CodeMirror");
+    if (showDiff) {
+      if (origText === null) {
+        try { origText = (await api(`/api/projects/${CUR.id}/file?path=${enc(path)}&version=original`)).content; }
+        catch (x) { showDiff = false; return toast(x.message, "err"); }
+      }
+      dv.innerHTML = renderDiff(origText, cm.getValue());
+    }
+    dv.hidden = !showDiff; w.style.visibility = showDiff ? "hidden" : "visible";
+    q("#bDiff").textContent = showDiff ? "Volver al editor" : "Comparar";
+    if (!showDiff) cm.refresh();
+  };
+  q("#bRestore").onclick = async () => {
+    if (!isMod) return toast("Este archivo no tiene cambios guardados.", "warn");
+    if (!confirm("¿Restaurar el archivo original? Se perderán los cambios guardados.")) return;
+    try {
+      await api(`/api/projects/${CUR.id}/changes?path=${enc(path)}`, { method: "DELETE" });
+      const r = await api(`/api/projects/${CUR.id}/file?path=${enc(path)}`);
+      cm.setValue(r.content); cm.clearHistory(); gen = cm.changeGeneration(); isMod = false; state(); validate();
+      toast("Archivo restaurado"); await reloadFiles(); drawProject();
+    } catch (x) { toast(x.message, "err"); }
+  };
+  q("#bClose").onclick = () => { if (dirty() && !confirm("Hay cambios sin guardar. ¿Salir de todos modos?")) return; ov.close(); };
+}
+
+/* ---------- Editor de imágenes e iconos ---------- */
+const loadImg = url => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("No se pudo cargar la imagen.")); i.src = url; });
+const rawUrl = (p, v) => `${pbase(CUR.id)}/raw?path=${enc(p)}&version=${v}&t=${Date.now()}`;
+const MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" };
+
+function renderImage(src, W, H, fit, e, quality) {
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  if (e === "jpg" || e === "jpeg") { g.fillStyle = "#fff"; g.fillRect(0, 0, W, H); }
+  const sw = src.naturalWidth, sh = src.naturalHeight;
+  if (fit === "stretch") g.drawImage(src, 0, 0, W, H);
+  else {
+    const k = fit === "cover" ? Math.max(W / sw, H / sh) : Math.min(W / sw, H / sh);
+    g.drawImage(src, (W - sw * k) / 2, (H - sh * k) / 2, sw * k, sh * k);
+  }
+  return new Promise(res => c.toBlob(b => res({ blob: b, canvas: c }), MIME[e], quality));
+}
+async function uploadImage(path, blob) {
+  const fd = new FormData(); fd.append("file", blob, "img");
+  return api(`/api/projects/${CUR.id}/replace?path=${enc(path)}`, { method: "POST", body: fd });
+}
+
+async function openImageEditor(path) {
+  const e = extOf(path), iconPath = CUR.p.info.iconPath || "", ib = iconPath ? baseName(iconPath) : "";
+  const family = ib ? CUR.files.filter(f => f.kind === "image" && f.editable && f.path.startsWith("res/") && baseName(f.path) === ib) : [];
+  const isIcon = family.some(f => f.path === path);
+  const modified = () => !!CUR.files.find(f => f.path === path)?.modified;
+
+  const ov = overlay(`<div class="ovbar"><b class="ttl" id="ttl"></b><button class="btn sm" id="bClose">✕</button></div>
+   <div class="ovbody scroll"><div class="card"><div class="kv"><div>Formato</div><div>${esc(e.toUpperCase())}</div><div>Dimensiones originales</div><div id="dim">…</div><div>Ruta</div><div class="perm" id="pth"></div></div>
+   ${isIcon ? `<div class="note" style="margin-top:12px">Este recurso es parte del icono de la app (${family.length} densidades).${iconPath.endsWith(".xml") ? " La app usa un icono adaptativo (XML): Android moderno puede mostrar ese en vez de estos PNG; cambiarlo del todo requiere el módulo 4." : ""}</div>` : ""}</div>
+   <div class="card"><div class="row" style="align-items:flex-start">
+     <div><div class="perm">Original</div><img class="pv" id="io" alt=""></div>
+     <div id="curBox" hidden><div class="perm">Actual (guardada)</div><img class="pv" id="ic" alt=""></div>
+     <div id="newBox" hidden><div class="perm">Nueva (vista previa)</div><div id="cvBox"></div><div class="perm" id="newInfo"></div></div></div></div>
+   <div class="card">
+     ${e === "gif" ? '<div class="note">Los GIF no se pueden convertir en el navegador. Para reemplazarlo, usa otro GIF mediante la API.</div>' : `
+     <button class="btn primary" id="pick">Elegir imagen del teléfono</button><input type="file" id="file" accept="image/*" hidden>
+     <div style="margin-top:14px"><label class="perm">Ajuste al tamaño original</label>
+       <select id="fit"><option value="contain">Mantener proporciones (sin recortar)</option><option value="cover">Rellenar recortando</option><option value="stretch">Estirar (deforma)</option></select></div>
+     ${e === "png" ? "" : '<div style="margin-top:14px"><label class="perm">Calidad: <span id="qv">90</span>%</label><input type="range" id="ql" min="40" max="100" value="90" style="width:100%"></div>'}
+     ${family.length > 1 && isIcon ? `<label style="display:flex;gap:10px;align-items:center;margin-top:14px;min-height:44px"><input type="checkbox" id="all" checked style="width:22px;height:22px"> Aplicar a todas las densidades del icono (${family.length} archivos)</label>` : ""}
+     <div class="row" style="margin-top:14px"><button class="btn primary" id="apply" disabled>Aplicar cambio</button></div>`}
+     <div class="row" style="margin-top:10px"><button class="btn danger" id="restore">Restaurar original</button></div>
+     <div class="perm" id="msg" style="margin-top:10px"></div></div></div>`);
+  const q = s => ov.querySelector(s);
+  q("#ttl").textContent = path; q("#pth").textContent = path;
+  q("#bClose").onclick = () => ov.close();
+
+  let W = 0, H = 0, src = null, last = null;
+  loadImg(rawUrl(path, "original")).then(im => { W = im.naturalWidth; H = im.naturalHeight; q("#dim").textContent = W + " × " + H + " px"; q("#io").src = im.src; })
+    .catch(x => toast(x.message, "err"));
+  const showCurrent = () => { const on = modified(); q("#curBox").hidden = !on; if (on) q("#ic").src = rawUrl(path, "current"); };
+  showCurrent();
+
+  if (e !== "gif") {
+    const quality = () => (q("#ql") ? Number(q("#ql").value) / 100 : undefined);
+    const preview = async () => {
+      if (!src || !W) return;
+      const r = await renderImage(src, W, H, q("#fit").value, e, quality());
+      if (!r.blob) { q("#msg").textContent = "Tu navegador no puede generar " + e.toUpperCase() + "."; last = null; q("#apply").disabled = true; return; }
+      last = r; q("#cvBox").replaceChildren(r.canvas); r.canvas.className = "pv";
+      q("#newBox").hidden = false;
+      const big = r.blob.size > 5 * 1048576;
+      q("#newInfo").textContent = `${W} × ${H} px · ${e.toUpperCase()} · ${fmt(r.blob.size)}${big ? " — supera 5 MB, baja la calidad" : ""}`;
+      q("#apply").disabled = big;
+    };
+    q("#pick").onclick = () => q("#file").click();
+    q("#file").onchange = async ev => {
+      const f = ev.target.files[0]; if (!f) return;
+      try { src = await loadImg(URL.createObjectURL(f)); await preview(); } catch (x) { toast("No se pudo leer esa imagen.", "err"); }
+    };
+    q("#fit").onchange = preview;
+    if (q("#ql")) q("#ql").oninput = () => { q("#qv").textContent = q("#ql").value; preview(); };
+    q("#apply").onclick = async () => {
+      if (!last || !src) return;
+      q("#apply").disabled = true;
+      const targets = (q("#all") && q("#all").checked) ? family.map(f => f.path) : [path];
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          q("#msg").textContent = `Aplicando ${i + 1}/${targets.length}…`;
+          let blob = last.blob;
+          if (targets[i] !== path) {
+            const o = await loadImg(rawUrl(targets[i], "original"));
+            const r = await renderImage(src, o.naturalWidth, o.naturalHeight, q("#fit").value, extOf(targets[i]), quality());
+            if (!r.blob) throw new Error("No se pudo generar " + targets[i]);
+            blob = r.blob;
+          }
+          await uploadImage(targets[i], blob);
+        }
+        toast(targets.length > 1 ? targets.length + " archivos reemplazados" : "Imagen reemplazada");
+        q("#msg").textContent = "Listo.";
+        await reloadFiles(); drawProject(); showCurrent();
+      } catch (x) { toast(x.message, "err"); q("#msg").textContent = x.message; }
+      q("#apply").disabled = false;
+    };
+  }
+  q("#restore").onclick = async () => {
+    const targets = (q("#all") && q("#all").checked ? family : CUR.files.filter(f => f.path === path)).filter(f => f.modified).map(f => f.path);
+    if (!targets.length) return toast("No hay cambios guardados que restaurar.", "warn");
+    if (!confirm("¿Restaurar " + targets.length + " archivo(s) al original?")) return;
+    try {
+      for (const t of targets) await api(`/api/projects/${CUR.id}/changes?path=${enc(t)}`, { method: "DELETE" });
+      toast("Restaurado"); await reloadFiles(); drawProject(); showCurrent();
+    } catch (x) { toast(x.message, "err"); }
+  };
+}
 
 async function runDiag() {
   const out = [], add = (s, t, d = "", fix = "") => out.push({ s, t, d, fix });
