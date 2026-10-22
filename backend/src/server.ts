@@ -12,6 +12,8 @@ import { config } from "./config.js";
 import { migrate, pool } from "./db/pool.js";
 import { projectRoutes } from "./routes/projects.js";
 import { fileRoutes } from "./routes/files.js";
+import { buildRoutes, recoverBuilds } from "./routes/builds.js";
+import { signingConfigured } from "./services/signing.js";
 import { ZipError } from "./services/zipSafe.js";
 
 const app = Fastify({ logger: { redact: ["req.headers.authorization"] } });
@@ -37,6 +39,11 @@ const frontendDir = process.env.FRONTEND_DIR ? resolve(process.env.FRONTEND_DIR)
 if (frontendDir && existsSync(frontendDir)) await app.register(fstatic, { root: frontendDir });
 
 const run = promisify(execFile);
+// true si el programa existe (aunque devuelva error al pedir ayuda)
+const has = async (bin: string, args: string[]) => {
+  try { await run(bin, args, { timeout: 5000 }); return true; } catch (e: any) { return e?.code !== "ENOENT"; }
+};
+
 let migrated = false;
 app.get("/health", async () => {
   const r: Record<string, unknown> = { ok: true, maxMb: config.maxApkBytes / 1024 / 1024 };
@@ -49,10 +56,21 @@ app.get("/health", async () => {
   catch { r.aapt = false; r.ok = false; }
   try { await mkdir(config.storageDir, { recursive: true }); await access(config.storageDir, constants.W_OK); r.storage = true; }
   catch { r.storage = false; r.ok = false; }
+
+  const missing: string[] = [];
+  if (!(await has("zip", ["-v"]))) missing.push("zip");
+  if (!(await has(config.zipalignBin, ["-h"]))) missing.push("zipalign");
+  if (!(await has(config.apksignerBin, ["--version"]))) missing.push("apksigner");
+  if (!(await has(config.keytoolBin, ["-help"]))) missing.push("keytool");
+  if (!signingConfigured()) missing.push("KEYSTORE_PASSWORD");
+  r.missing = missing;
+  r.build = missing.length === 0;
   return r;
 });
 await app.register(projectRoutes);
 await app.register(fileRoutes);
+await app.register(buildRoutes);
 
-try { await migrate(); migrated = true; } catch (e) { app.log.error("Migración fallida: la base de datos no responde"); }
+try { await migrate(); migrated = true; await recoverBuilds(); }
+catch (e) { app.log.error("Migración fallida: la base de datos no responde"); }
 await app.listen({ port: config.port, host: "0.0.0.0" });
