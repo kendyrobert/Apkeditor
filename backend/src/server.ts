@@ -11,11 +11,28 @@ import { access, mkdir, constants } from "node:fs/promises";
 import { config } from "./config.js";
 import { migrate, pool } from "./db/pool.js";
 import { projectRoutes } from "./routes/projects.js";
+import { fileRoutes } from "./routes/files.js";
+import { ZipError } from "./services/zipSafe.js";
 
 const app = Fastify({ logger: { redact: ["req.headers.authorization"] } });
-await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
+
+app.setErrorHandler((e: any, req, reply) => {
+  if (e instanceof ZipError)
+    return reply.code(e.code === "TOO_BIG" ? 413 : 422).send({ error: { code: e.code, message: e.message } });
+  const status = e.statusCode && e.statusCode < 500 ? e.statusCode : 500;
+  if (status === 500) req.log.error(e);
+  reply.code(status).send({
+    error: {
+      code: status === 500 ? "INTERNAL" : (e.code ?? "BAD_REQUEST"),
+      message: status === 500 ? "Error interno del servidor." : e.message,
+    },
+  });
+});
+
+await app.register(rateLimit, { max: 240, timeWindow: "1 minute" });
 await app.register(multipart, { limits: { fileSize: config.maxApkBytes, files: 1 } });
-if (process.env.CORS_ORIGIN) await app.register(cors, { origin: process.env.CORS_ORIGIN });
+if (process.env.CORS_ORIGIN)
+  await app.register(cors, { origin: process.env.CORS_ORIGIN, methods: ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] });
 const frontendDir = process.env.FRONTEND_DIR ? resolve(process.env.FRONTEND_DIR) : null;
 if (frontendDir && existsSync(frontendDir)) await app.register(fstatic, { root: frontendDir });
 
@@ -35,6 +52,7 @@ app.get("/health", async () => {
   return r;
 });
 await app.register(projectRoutes);
+await app.register(fileRoutes);
 
 try { await migrate(); migrated = true; } catch (e) { app.log.error("Migración fallida: la base de datos no responde"); }
 await app.listen({ port: config.port, host: "0.0.0.0" });
