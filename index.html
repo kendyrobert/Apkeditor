@@ -88,10 +88,10 @@ select{width:100%;min-height:46px;padding:8px 12px;border-radius:12px;border:1px
     <a class="nav" href="#/import" data-r="import">Importar APK</a>
     <a class="nav" href="#/projects">Editor de código <span class="tag">en proyecto</span></a>
     <a class="nav" href="#/projects">Imágenes e iconos <span class="tag">en proyecto</span></a>
-    <span class="nav off">Propiedades <span class="tag">módulo 4</span></span>
-    <span class="nav off">Compilación <span class="tag">módulo 4</span></span>
-    <span class="nav off">Firma digital <span class="tag">módulo 4</span></span>
-    <span class="nav off">Versiones y enlaces <span class="tag">módulo 5</span></span>
+    <span class="nav off">Propiedades <span class="tag">módulo 5</span></span>
+    <a class="nav" href="#/projects">Compilación y enlaces <span class="tag">en proyecto</span></a>
+    <span class="nav off">Firma digital <span class="tag">módulo 5</span></span>
+    <span class="nav off">Versiones <span class="tag">módulo 5</span></span>
     <a class="nav" href="#/diag" data-r="diag">Diagnóstico</a>
     <a class="nav" href="#/settings" data-r="settings">Configuración</a>
   </aside>
@@ -156,7 +156,7 @@ function viewHome() {
   view.innerHTML = `<h1>KENDY APK STUDIO</h1>
   <p class="sub">Importa un APK que tengas derecho a modificar, explora su contenido y edita sus recursos.</p>
   <div class="card"><a class="btn primary big" href="#/import">⬆ Importar APK</a>
-  <p class="sub" style="margin:14px 0 0">Ahora disponible: carga, análisis, explorador, editor de texto, reemplazo de imágenes e iconos y registro de cambios. Reconstrucción, firma y enlaces de descarga llegan en los siguientes módulos.</p></div>
+  <p class="sub" style="margin:14px 0 0">Ahora disponible: carga, análisis, explorador, editor de texto, reemplazo de imágenes e iconos, reconstrucción, firma y enlaces de descarga. La edición de XML y del manifiesto (Apktool) llega en el módulo 5.</p></div>
   <div class="card"><h2>Estado del servidor</h2><div id="health">Comprobando…</div></div>`;
   api("/health").then(h => {
     const bad = h.ok === false;
@@ -247,14 +247,15 @@ async function reloadFiles() { CUR.files = await api("/api/projects/" + CUR.id +
 function drawProject() {
   const { p, files } = CUR, n = files.filter(f => f.modified).length;
   view.innerHTML = `<h1>${esc(p.name)}</h1><p class="sub">${esc(p.info.packageName)}${n ? ` · <span style="color:var(--warn)">${n} archivo(s) modificado(s)</span>` : ""}</p>
-  <div class="chips" id="tabs"><button class="chip" data-t="info">Información</button><button class="chip" data-t="files">Archivos</button><button class="chip" data-t="changes">Cambios (${n})</button></div><div id="tab"></div>`;
+  <div class="chips" id="tabs"><button class="chip" data-t="info">Información</button><button class="chip" data-t="files">Archivos</button><button class="chip" data-t="changes">Cambios (${n})</button><button class="chip" data-t="build">Compilación</button></div><div id="tab"></div>`;
   $("#tabs").onclick = e => { const t = e.target.dataset.t; if (t) { CUR.tab = t; drawTab(); } };
   drawTab();
 }
 function drawTab() {
+  stopPoll();
   document.querySelectorAll("#tabs .chip").forEach(c => c.classList.toggle("on", c.dataset.t === CUR.tab));
   const el = $("#tab");
-  ({ info: renderInfo, files: renderFiles, changes: renderChanges }[CUR.tab])(el);
+  ({ info: renderInfo, files: renderFiles, changes: renderChanges, build: renderBuild }[CUR.tab])(el);
 }
 
 function renderInfo(el) {
@@ -270,7 +271,7 @@ function renderInfo(el) {
    <div>Estado</div><div>${esc(p.status === "modified" ? "con cambios sin reconstruir" : "sin cambios")}</div>
    <div>Arquitecturas</div><div>${i.nativeAbis.length ? esc(i.nativeAbis.join(", ")) : "ninguna (sin bibliotecas nativas)"}</div>
    <div>SHA-256 original</div><div class="perm">${esc(p.original_sha256)}</div></div></div>
-   <div class="note" style="margin-top:14px" id="iconNote" hidden>El icono no se puede mostrar como imagen (probablemente es un icono adaptativo XML). Se resolverá con Apktool en el módulo 4.</div></div>
+   <div class="note" style="margin-top:14px" id="iconNote" hidden>El icono no se puede mostrar como imagen (probablemente es un icono adaptativo XML). Se resolverá con Apktool en el módulo 5.</div></div>
   <div class="card"><h2>Permisos declarados (${i.permissions.length})</h2>
    ${i.permissions.length ? i.permissions.map(x => `<div class="perm">${esc(x)}</div>`).join("") : "Ninguno"}</div>`;
   const probe = new Image(); probe.onerror = () => { const n = $("#iconNote"); if (n) n.hidden = false; }; probe.src = base + "/icon?v=" + CUR.iconV;
@@ -322,7 +323,7 @@ async function renderChanges(el) {
      <div class="row" style="margin-top:8px"><button class="btn sm" data-open="${esc(c.path)}" data-k="${esc(c.kind)}">Abrir</button><button class="btn sm danger" data-rs="${esc(c.path)}">Restaurar</button></div></div>`).join("") : "Todavía no hay cambios."}
    ${r.changes.length ? '<button class="btn danger" id="discard" style="margin-top:8px">Descartar todos los cambios</button>' : ""}</div>
   <div class="card"><h2>Historial</h2>${r.log.length ? r.log.map(l => `<div class="perm">${esc(fmtDate(l.at))} · ${esc(l.action)} · ${esc(l.path)}</div>`).join("") : "Sin historial."}</div>
-  <div class="note">Los cambios quedan guardados en el proyecto, pero el APK todavía no se reconstruye ni se firma: eso llega en el módulo 4. En el plan gratuito de Render, los archivos pueden perderse si el servidor se reinicia.</div>`;
+  <div class="note">Estos cambios se aplican al APK en la pestaña Compilación. En el plan gratuito de Render, los archivos pueden perderse si el servidor se reinicia.</div>`;
   el.querySelectorAll("[data-open]").forEach(b => b.onclick = () => b.dataset.k === "text" ? openTextEditor(b.dataset.open) : openImageEditor(b.dataset.open));
   el.querySelectorAll("[data-rs]").forEach(b => b.onclick = async () => {
     if (!confirm("¿Restaurar el archivo original? Se perderán sus cambios.")) return;
@@ -335,6 +336,61 @@ async function renderChanges(el) {
     try { await api(`/api/projects/${CUR.id}/changes`, { method: "DELETE" }); toast("Cambios descartados"); await reloadFiles(); drawProject(); }
     catch (e) { toast(e.message, "err"); }
   };
+}
+
+/* ---------- Compilación y descarga ---------- */
+let buildTimer = null;
+function stopPoll() { if (buildTimer) { clearInterval(buildTimer); buildTimer = null; } }
+const linkUrl = path => (apiBase() || location.origin) + path;
+const BSTATUS = { queued: "En cola", running: "Compilando…", success: "Compilada", failed: "Falló" };
+
+function buildCard(b) {
+  const st = b.status, live = !!b.downloadPath, url = live ? linkUrl(b.downloadPath) : "";
+  const color = st === "success" ? "var(--ok)" : st === "failed" ? "var(--err)" : "var(--warn)";
+  const ok = st === "success";
+  return `<div class="card"><div class="row" style="justify-content:space-between"><b>Compilación #${b.number}</b><span style="color:${color}">${esc(BSTATUS[st])}</span></div>
+  <div class="perm">${esc(fmtDate(b.createdAt))} · ${esc(b.changesCount)} cambio(s)</div>
+  ${st === "failed" ? `<p class="note" style="margin-top:10px">${esc(b.error || "Error desconocido")}</p>` : ""}
+  ${ok ? `<div class="kv" style="margin-top:10px"><div>Archivo</div><div class="perm">${esc(b.fileName)}</div><div>Tamaño</div><div>${fmt(b.sizeBytes || 0)}</div>
+    <div>Firma</div><div>${b.verified ? "✔ verificada con apksigner" : "⚠ sin verificar"}</div><div>Certificado SHA-256</div><div class="perm">${esc(b.signerSha256)}</div>
+    <div>Probada en dispositivo</div><div>no</div><div>Enlace</div><div>${live ? "activo hasta " + esc(fmtDate(b.expiresAt)) : b.revoked ? "revocado" : "caducado"}</div></div>
+   <div class="row" style="margin-top:12px">${live
+     ? `<a class="btn primary" href="${esc(url)}">⬇ Descargar</a><button class="btn" data-copy="${esc(url)}">Copiar enlace</button><a class="btn" href="${esc(url)}" target="_blank" rel="noopener">Abrir</a><button class="btn danger" data-revoke="${esc(b.id)}">Revocar</button>`
+     : `<button class="btn" data-newlink="${esc(b.id)}">Generar enlace nuevo</button>`}
+     <button class="btn danger" data-delb="${esc(b.id)}">Eliminar</button></div>` : ""}
+  ${b.log ? `<details style="margin-top:10px"><summary class="perm">Ver registro</summary><pre class="perm" style="white-space:pre-wrap">${esc(b.log)}</pre></details>` : ""}</div>`;
+}
+
+async function renderBuild(el) {
+  el.innerHTML = '<div class="card">Cargando…</div>';
+  await drawBuilds(el);
+}
+async function drawBuilds(el) {
+  let list;
+  try { list = await api(`/api/projects/${CUR.id}/builds`); }
+  catch (e) { el.innerHTML = `<div class="card" style="color:var(--err)">${esc(e.message)}</div>`; return; }
+  const n = CUR.files.filter(f => f.modified).length, busy = list.some(b => b.status === "queued" || b.status === "running");
+  el.innerHTML = `<div class="card"><h2>Reconstruir y firmar</h2>
+   <p class="sub" style="margin-bottom:12px">Se aplican tus <b>${n}</b> cambio(s) al APK original, se alinea y se firma con la clave de este servidor.</p>
+   <button class="btn primary" id="build" ${busy ? "disabled" : ""}>${busy ? "Compilando…" : "🔨 Reconstruir y firmar APK"}</button></div>
+   <div class="note" style="margin-bottom:16px">La firma será <b>distinta a la del APK original</b>: para instalarlo normalmente debes desinstalar antes la app original (se borran sus datos) y no se actualizará sobre ella. "Compilada" no significa "probada": instálala en un teléfono para comprobar que funciona.</div>
+   ${list.length ? list.map(buildCard).join("") : '<div class="card">Aún no hay compilaciones.</div>'}`;
+  $("#build").onclick = async () => {
+    try { await api(`/api/projects/${CUR.id}/builds`, { method: "POST" }); toast("Compilación iniciada"); drawBuilds($("#tab")); }
+    catch (e) { toast(e.message, "err"); }
+  };
+  el.onclick = async ev => {
+    const t = ev.target.closest("button"); if (!t) return;
+    const d = t.dataset;
+    try {
+      if (d.copy) { try { await navigator.clipboard.writeText(d.copy); toast("Enlace copiado"); } catch { prompt("Copia el enlace:", d.copy); } }
+      else if (d.revoke) { if (!confirm("¿Revocar el enlace? Dejará de funcionar.")) return; await api(`/api/projects/${CUR.id}/builds/${d.revoke}/link`, { method: "DELETE" }); toast("Enlace revocado"); drawBuilds(el); }
+      else if (d.newlink) { await api(`/api/projects/${CUR.id}/builds/${d.newlink}/link`, { method: "POST" }); toast("Enlace nuevo generado"); drawBuilds(el); }
+      else if (d.delb) { if (!confirm("¿Eliminar esta compilación y su archivo?")) return; await api(`/api/projects/${CUR.id}/builds/${d.delb}`, { method: "DELETE" }); toast("Compilación eliminada"); drawBuilds(el); }
+    } catch (e) { toast(e.message, "err"); }
+  };
+  stopPoll();
+  if (busy) buildTimer = setInterval(() => { if (CUR && CUR.tab === "build" && document.body.contains(el)) drawBuilds(el); else stopPoll(); }, 2500);
 }
 
 /* ---------- Pantalla completa (editores) ---------- */
@@ -518,7 +574,7 @@ async function openImageEditor(path) {
 
   const ov = overlay(`<div class="ovbar"><b class="ttl" id="ttl"></b><button class="btn sm" id="bClose">✕</button></div>
    <div class="ovbody scroll"><div class="card"><div class="kv"><div>Formato</div><div>${esc(e.toUpperCase())}</div><div>Dimensiones originales</div><div id="dim">…</div><div>Ruta</div><div class="perm" id="pth"></div></div>
-   ${isIcon ? `<div class="note" style="margin-top:12px">Este recurso es parte del icono de la app (${family.length} densidades).${iconPath.endsWith(".xml") ? " La app usa un icono adaptativo (XML): Android moderno puede mostrar ese en vez de estos PNG; cambiarlo del todo requiere el módulo 4." : ""}</div>` : ""}</div>
+   ${isIcon ? `<div class="note" style="margin-top:12px">Este recurso es parte del icono de la app (${family.length} densidades).${iconPath.endsWith(".xml") ? " La app usa un icono adaptativo (XML): Android moderno puede mostrar ese en vez de estos PNG; cambiarlo del todo requiere el módulo 5." : ""}</div>` : ""}</div>
    <div class="card"><div class="row" style="align-items:flex-start">
      <div><div class="perm">Original</div><img class="pv" id="io" alt=""></div>
      <div id="curBox" hidden><div class="perm">Actual (guardada)</div><img class="pv" id="ic" alt=""></div>
@@ -624,6 +680,8 @@ async function runDiag() {
     h.db ? add("ok", "Base de datos", "Conectada") : add("bad", "Base de datos", "No responde (" + (h.dbError || "sin detalle") + ")", "Revisa DATABASE_URL en el backend.");
     h.aapt ? add("ok", "aapt (lectura de APK)", h.aaptVersion || "instalado") : add("bad", "aapt", "No encontrado en el servidor", "Instala el paquete aapt o ajusta AAPT_BIN.");
     h.storage ? add("ok", "Almacenamiento", "Escribible") : add("bad", "Almacenamiento", "No se puede escribir en STORAGE_DIR", "Monta un disco/volumen persistente y revisa STORAGE_DIR.");
+    h.build ? add("ok", "Reconstrucción y firma", "zip, zipalign, apksigner y clave de firma listos")
+            : add("bad", "Reconstrucción y firma", "Falta: " + ((h.missing || []).join(", ") || "configuración"), "Define KEYSTORE_PASSWORD (8+ caracteres) en Render y despliega con el Dockerfile nuevo.");
     add("ok", "Límite de subida", (h.maxMb || "?") + " MB");
     try { const r = await fetch(base + "/api/projects"); r.ok ? add("ok", "API de proyectos", "HTTP 200") : add("bad", "API de proyectos", "HTTP " + r.status, "Mira los logs del backend."); }
     catch (e) { add("bad", "API de proyectos", e.message); }
@@ -666,6 +724,7 @@ function viewSettings() {
 
 /* ---------- Router ---------- */
 function route() {
+  stopPoll();
   const [, r, arg] = (location.hash || "#/home").split("/");
   $("#side").classList.remove("open");
   document.querySelectorAll(".nav[data-r]").forEach(a => a.classList.toggle("active", a.dataset.r === (r === "project" ? "projects" : r)));
