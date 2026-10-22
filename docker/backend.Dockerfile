@@ -1,5 +1,7 @@
 FROM node:20-bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends aapt && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends aapt zip apksigner zipalign default-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+ENV JAVA_TOOL_OPTIONS="-Xmx200m"
 WORKDIR /app
 COPY backend/package.json ./
 RUN npm install
