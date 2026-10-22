@@ -1,16 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { open } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
 import { pool } from "../db/pool.js";
-import { ensureProjectDir, removeProjectDir } from "../storage/local.js";
+import { ensureProjectDir, removeProjectDir, projectDir } from "../storage/local.js";
 import { analyzeApk, extractIcon } from "../services/analyze.js";
 import { listZip, categorize, ZipError } from "../services/zipSafe.js";
+import { classify } from "../services/editable.js";
 
-const OWNER = "local";
+const OWNER = "local"; // TODO módulo 6: autenticación real
 
 function err(reply: any, status: number, code: string, message: string) {
   return reply.code(status).send({ error: { code, message } });
@@ -78,16 +79,26 @@ export async function projectRoutes(app: FastifyInstance) {
     if (!p) return err(reply, 404, "NOT_FOUND", "Proyecto no encontrado.");
     const q = req.query.q?.toLowerCase();
     const entries = await listZip(p.original_path);
+    const { rows: ch } = await pool.query(`SELECT path FROM project_changes WHERE project_id=$1`, [p.id]);
+    const changed = new Set(ch.map((r) => r.path));
     return entries.filter((e) => !e.isDir && (!q || e.path.toLowerCase().includes(q)))
-      .map((e) => ({ path: e.path, size: e.size, category: categorize(e.path) }));
+      .map((e) => {
+        const c = classify(e.path);
+        return { path: e.path, size: e.size, category: categorize(e.path), kind: c.kind, editable: c.editable, modified: changed.has(e.path) };
+      });
   });
 
   app.get<{ Params: { id: string } }>("/api/projects/:id/icon", async (req, reply) => {
     const p = await getProject(req.params.id);
     if (!p) return err(reply, 404, "NOT_FOUND", "Proyecto no encontrado.");
-    const buf = await extractIcon(p.original_path, p.info.iconPath);
+    const ch = p.info.iconPath
+      ? (await pool.query(`SELECT stored_name FROM project_changes WHERE project_id=$1 AND path=$2`, [p.id, p.info.iconPath])).rows[0]
+      : null;
+    const buf = ch
+      ? await readFile(join(projectDir(p.id), "changes", ch.stored_name))
+      : await extractIcon(p.original_path, p.info.iconPath);
     if (!buf) return err(reply, 404, "NO_ICON", "Icono no disponible como imagen (puede ser un icono adaptativo XML).");
-    return reply.type(p.info.iconPath.endsWith(".png") ? "image/png" : "image/webp").send(buf);
+    return reply.header("Cache-Control", "no-store").type(p.info.iconPath.endsWith(".png") ? "image/png" : "image/webp").send(buf);
   });
 
   app.delete<{ Params: { id: string } }>("/api/projects/:id", async (req, reply) => {
@@ -97,4 +108,4 @@ export async function projectRoutes(app: FastifyInstance) {
     await removeProjectDir(p.id);
     return reply.code(204).send();
   });
-                                  }
+         }
