@@ -4,7 +4,11 @@ import { config } from "../config.js";
 
 export const pool = new pg.Pool({ connectionString: config.databaseUrl });
 
+const MIGRATIONS = ["001_init.sql", "002_changes.sql"];
+
 export async function migrate() {
-  const sql = readFileSync(new URL("./001_init.sql", import.meta.url), "utf8");
-  await pool.query(sql);
+  for (const f of MIGRATIONS) {
+    const sql = readFileSync(new URL("./" + f, import.meta.url), "utf8");
+    await pool.query(sql);
+  }
 }
